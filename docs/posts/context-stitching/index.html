@@ -6,8 +6,11 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Hlib Avietisov">
+<meta name="dcterms.date" content="2024-09-24">
+<meta name="description" content="As was described in the “You don’t need to pay that much attention” post, from slippery attention’s property to have different attention patterns for different classes of tokens, coming a rather powerful technique, which I called “Context stitching”, which allows to put context together from precomputed chunks like lego blocks. In this blog post, I elaborate how.">
 
-<title>Adventures in Inference Time Optimizations (and cool stuff) – Hlib Avietisov blog on machine learning</title>
+<title>Unnatural abilities of context stitching – Hlib Avietisov blog on machine learning</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,27 +23,79 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
-</style>
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+/* CSS for citations */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+  margin-bottom: 0em;
+}
+.hanging-indent div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}</style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<script src="site_libs/quarto-listing/list.min.js"></script>
-<script src="site_libs/quarto-listing/quarto-listing.js"></script>
-<script src="site_libs/quarto-html/quarto.js"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -68,77 +123,19 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
-<script>
 
-  window.document.addEventListener("DOMContentLoaded", function (_event) {
-    const listingTargetEl = window.document.querySelector('#listing-listing .list');
-    if (!listingTargetEl) {
-      // No listing discovered, do not attach.
-      return; 
-    }
 
-    const options = {
-      valueNames: ['listing-date','listing-title','listing-author','listing-image','listing-description','listing-categories',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
-      
-      searchColumns: ["listing-date","listing-title","listing-author","listing-image","listing-description","listing-categories"],
-    };
-
-    window['quarto-listings'] = window['quarto-listings'] || {};
-    window['quarto-listings']['listing-listing'] = new List('listing-listing', options);
-
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  });
-
-  window.addEventListener('hashchange',() => {
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  })
-  </script>
-
-  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
-
-<script type="text/javascript">
-const typesetMath = (el) => {
-  if (window.MathJax) {
-    // MathJax Typeset
-    window.MathJax.typeset([el]);
-  } else if (window.katex) {
-    // KaTeX Render
-    var mathElements = el.getElementsByClassName("math");
-    var macros = [];
-    for (var i = 0; i < mathElements.length; i++) {
-      var texText = mathElements[i].firstChild;
-      if (mathElements[i].tagName == "SPAN") {
-        window.katex.render(texText.data, mathElements[i], {
-          displayMode: mathElements[i].classList.contains('display'),
-          throwOnError: false,
-          macros: macros,
-          fleqn: false
-        });
-      }
-    }
-  }
-}
-window.Quarto = {
-  typesetMath
-};
-</script>
-
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="../../styles.css">
 </head>
 
-<body class="nav-fixed">
+<body class="nav-fixed fullcontent">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top quarto-banner">
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="./index.html">
+    <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Hlib Avietisov blog on machine learning</span>
     </a>
   </div>
@@ -149,7 +146,7 @@ window.Quarto = {
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="./about.html"> 
+    <a class="nav-link" href="../../about.html"> 
 <span class="menu-text">About</span></a>
   </li>  
   <li class="nav-item compact">
@@ -172,134 +169,123 @@ window.Quarto = {
 <!-- content -->
 <header id="title-block-header" class="quarto-title-block default page-columns page-full">
   <div class="quarto-title-banner page-columns page-full">
-    <div class="quarto-title column-page-left">
-      <h1 class="title">Adventures in Inference Time Optimizations (and cool stuff)</h1>
-                      </div>
+    <div class="quarto-title column-body">
+      <h1 class="title">Unnatural abilities of context stitching</h1>
+                  <div>
+        <div class="description">
+          As was described in the “You don’t need to pay that much attention” post, from slippery attention’s property to have different attention patterns for different classes of tokens, coming a rather powerful technique, which I called “Context stitching”, which allows to put context together from precomputed chunks like lego blocks. In this blog post, I elaborate how.
+        </div>
+      </div>
+                          <div class="quarto-categories">
+                <div class="quarto-category">machine-learning</div>
+                <div class="quarto-category">transformers</div>
+                <div class="quarto-category">attention</div>
+                <div class="quarto-category">code</div>
+                <div class="quarto-category">optimization</div>
+              </div>
+                  </div>
   </div>
     
   
-  <div class="quarto-title-meta column-page-left">
+  <div class="quarto-title-meta">
 
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p>Hlib Avietisov </p>
+            </div>
+    </div>
       
+      <div>
+      <div class="quarto-title-meta-heading">Published</div>
+      <div class="quarto-title-meta-contents">
+        <p class="date">September 24, 2024</p>
+      </div>
+    </div>
     
       
     </div>
     
   
-  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        
-    <h5 class="quarto-listing-category-title">Categories</h5><div class="quarto-listing-category category-default"><div class="category" data-category="">All <span class="quarto-category-count">(2)</span></div><div class="category" data-category="attention">attention <span class="quarto-category-count">(2)</span></div><div class="category" data-category="code">code <span class="quarto-category-count">(2)</span></div><div class="category" data-category="machine-learning">machine-learning <span class="quarto-category-count">(2)</span></div><div class="category" data-category="optimization">optimization <span class="quarto-category-count">(2)</span></div><div class="category" data-category="transformers">transformers <span class="quarto-category-count">(2)</span></div></div></div>
+    
 <!-- main -->
-<main class="content quarto-banner-title-block column-page-left" id="quarto-document-content">
+<main class="content quarto-banner-title-block" id="quarto-document-content">
 
 
 
 
 
+<section id="idea" class="level2">
+<h2 class="anchored" data-anchor-id="idea">Idea</h2>
+<p>Core idea of context stitching is precomputing of KV values for different chunks of text, then to be loaded at inference time when required, and put together to form final context. Problem for this is assumed interdependence of chunks, since in vanilla attention, KV values for next chunk of text depends on previous chunk, which should create a bit of a problem.</p>
+</section>
+<section id="recap-of-slippery-attention" class="level2">
+<h2 class="anchored" data-anchor-id="recap-of-slippery-attention">Recap of slippery attention</h2>
+<p>In the previous post, <a href="../..\posts/slippery-attention/">“You don’t need to pay that much attention”</a>, I described rather interesting property of attention mechanism to not break generation of text, if we replace vanilla attention pattern for already known tokens, with new sparse attention pattern, which shows that unless we need to predict a new token, we can actually skip a lot of computations.</p>
+<p>Naturally, this is what enables the context stitching, since now we prove that KV values are mostly independent for chunks of text when there’s no new predictions to make.</p>
+<p>In the original post, I’ve made an example of slippery attention with triangular attention pattern, but we’re actually not limited to that. It was just a display that even with such drastic changes in the attention pattern, LLM still remains capable of many tasks, with severe degradation only on some tasks.</p>
+</section>
+<section id="context-stitching" class="level2">
+<h2 class="anchored" data-anchor-id="context-stitching">Context stitching</h2>
+<p>What now we can do, is to take advantage of this property by precomputing KV values with normal attention pattern in “precompute time”, and then, at inference time, load these KV values into memory, to make predictions. As was shown in “You don’t need to pay that much attention” post, we will need to have full attention mask only for newly generated token.</p>
+<p>Last problem for context stiching remains is positioning of these chunks in the context. For that, I will abuse property of a transformer to not care about continuity of positional embeddings. Basically, we compute KV values for each chunk starting at predefined positions, after which, context will look like it has multiple chunks decently spaced out from each other, with new tokens generated at a decent distance from last predefined token. That’s the main limitation of this, model should be taught to handle big contexts, as much as you need. Then, it’s only a matter of figuring out where you would want to put your chunks inside the context, and then, precompute KV values.</p>
+<p>Theoretically, for prefill, we would need to load KV values for system prompt from memory/storage, compute user request KV values using slippery attention (with triangular mask, to save on compute), and only then predict new token with full mask. As an example, let’s look at following sequence:</p>
+<div style="
+  background-color: #f0f0f0;
+  border-left: 5px solid #000000;
+  padding: 10px;
+  margin: 10px 0;
+">
+<p><span style="color:magenta">&lt;s&gt;Use following table to help you answer the question:</span></p>
+<p><span style="color:blue">2+2=4</span></p>
+<p><span style="color:green">2+3=5</span></p>
+<p><span style="color:magenta">Question:</span> <span style="color:red">2+2=</span></p>
+<p><span style="color:magenta">Answer:</span></p>
+</div>
+<p>Different colors of text are used to distinguish between different chunks of text and their origin. Blue and green are different chunks of text, loaded from storage, magenta comes for system prompt, red is for user request.</p>
+<p>So, red is calculated with triangular mask, rest gets precomputed with with local full-attention mask. So, for sequence above, let’s build an (approximate) attention mask to show what I mean:</p>
+<div id="cell-fig-causal-mask" class="cell" data-execution_count="1">
+<div class="cell-output cell-output-display">
+<div id="fig-causal-mask" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-causal-mask-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="index_files/figure-html/fig-causal-mask-output-1.png" width="776" height="625" class="figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-causal-mask-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: Stitched Causal Attention Mask
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p>Notice how last token, attributed to system prompt, has attention to entire context. This is required to properly predict next token. All following generated tokens will attend to everything in the context, but note how system prompt, and chunks, all can have precomputed KV values since they don’t attend to each other. With little exception of token at index 0, which is also called “attention sink”<span class="citation" data-cites="xiao2024efficientstreaminglanguagemodels">(<a href="#ref-xiao2024efficientstreaminglanguagemodels" role="doc-biblioref">Xiao et al. 2024</a>)</span>, but that can also be precomputed, since we always know what token it would be: it’s a sequence start token.</p>
+<p>You might find it a bit similar to what’s happening in [Quiet-STaR]<span class="citation" data-cites="zelikman2024quietstarlanguagemodelsteach">(<a href="#ref-zelikman2024quietstarlanguagemodelsteach" role="doc-biblioref">Zelikman et al. 2024</a>)</span> paper, where they also precompute KV values for different chunks of text, but it’s done with motivation of running inference of different tokens in parallel. Here, however, motivation is precomputation of KV values to save time during inference. In example above, in order to get 4, we only need to compute KV values for single token, which will be just 4. Rest is just loaded. 1 vs (25*25)/2, isn’t it neat?</p>
+<p>For now, this is just an idea, there’s no implementation YET. Will have to do it a bit later once I finish with other stuff.</p>
+<section id="cite-this-as" class="level3">
+<h3 class="anchored" data-anchor-id="cite-this-as">Cite this as</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bibtex code-with-copy"><code class="sourceCode bibtex"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="va">@misc</span>{<span class="ot">avietisov2024contextstitching</span>,</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">title</span>={Unnatural abilities of context stitching},</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">author</span>={Hlib Avietisov},</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">year</span>={2024},</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">howpublished</span>={Online, available at <span class="ch">\url</span>{https://havietisov.github.io/posts/context-stitching/}},</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
 
+</section>
+</section>
 
-<div class="quarto-listing quarto-listing-container-default" id="listing-listing">
-<div class="list quarto-listing-default">
-<div class="quarto-post image-right" data-index="0" data-categories="machine-learning,transformers,attention,code,optimization" data-listing-date-sort="1727125200000" data-listing-file-modified-sort="1727204568928" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1128">
-<div class="thumbnail">
-<p><a href="./posts/context-stitching/index.html" class="no-external"></a></p><a href="./posts/context-stitching/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/context-stitching/image.jpg" class="thumbnail-image"></p>
-</a><p><a href="./posts/context-stitching/index.html" class="no-external"></a></p>
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" role="doc-bibliography" id="quarto-bibliography"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent" data-entry-spacing="0" role="list">
+<div id="ref-xiao2024efficientstreaminglanguagemodels" class="csl-entry" role="listitem">
+Xiao, Guangxuan, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. 2024. <span>“Efficient Streaming Language Models with Attention Sinks.”</span> <a href="https://arxiv.org/abs/2309.17453">https://arxiv.org/abs/2309.17453</a>.
 </div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/context-stitching/index.html" class="no-external">Unnatural abilities of context stitching</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/context-stitching/index.html" class="no-external"></a>
+<div id="ref-zelikman2024quietstarlanguagemodelsteach" class="csl-entry" role="listitem">
+Zelikman, Eric, Georges Harik, Yijia Shao, Varuna Jayasiri, Nick Haber, and Noah D. Goodman. 2024. <span>“Quiet-STaR: Language Models Can Teach Themselves to Think Before Speaking.”</span> <a href="https://arxiv.org/abs/2403.09629">https://arxiv.org/abs/2403.09629</a>.
 </div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('machine-learning'); return false;">
-machine-learning
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('transformers'); return false;">
-transformers
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('attention'); return false;">
-attention
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('code'); return false;">
-code
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('optimization'); return false;">
-optimization
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/context-stitching/index.html" class="no-external">As was described in the “You don’t need to pay that much attention” post, from slippery attention’s property to have different attention patterns for different classes of tokens, coming a rather powerful technique, which I called “Context stitching”, which allows to put context together from precomputed chunks like lego blocks. In this blog post, I elaborate how.</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/context-stitching/index.html" class="no-external">
-<div class="listing-date">
-Sep 24, 2024
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="1" data-categories="machine-learning,transformers,attention,code,optimization" data-listing-date-sort="1726434000000" data-listing-file-modified-sort="1726867450508" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="7" data-listing-word-count-sort="1374">
-<div class="thumbnail">
-<p><a href="./posts/slippery-attention/index.html" class="no-external"></a></p><a href="./posts/slippery-attention/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/slippery-attention/image.jpg" class="thumbnail-image"></p>
-</a><p><a href="./posts/slippery-attention/index.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/slippery-attention/index.html" class="no-external">You don’t need to pay that much attention</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/slippery-attention/index.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('machine-learning'); return false;">
-machine-learning
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('transformers'); return false;">
-transformers
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('attention'); return false;">
-attention
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('code'); return false;">
-code
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('optimization'); return false;">
-optimization
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/slippery-attention/index.html" class="no-external">A sub-quadratic attention trick to enchance even pre-trained LLMs with speed and incredible abilities</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/slippery-attention/index.html" class="no-external">
-<div class="listing-date">
-Sep 16, 2024
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-</div>
-<div class="listing-no-matching d-none">
-No matching items
-</div>
-</div></main> <!-- /main -->
+</div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
   const toggleBodyColorMode = (bsSheetEl) => {
