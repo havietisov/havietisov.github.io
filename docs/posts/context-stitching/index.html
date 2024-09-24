@@ -180,7 +180,6 @@ div.csl-indent {
                 <div class="quarto-category">machine-learning</div>
                 <div class="quarto-category">transformers</div>
                 <div class="quarto-category">attention</div>
-                <div class="quarto-category">code</div>
                 <div class="quarto-category">optimization</div>
               </div>
                   </div>
@@ -261,8 +260,8 @@ Figure&nbsp;1: Stitched Causal Attention Mask
 </div>
 </div>
 </div>
-<p>Notice how last token, attributed to system prompt, has attention to entire context. This is required to properly predict next token. All following generated tokens will attend to everything in the context, but note how system prompt, and chunks, all can have precomputed KV values since they don’t attend to each other. With little exception of token at index 0, which is also called “attention sink”<span class="citation" data-cites="xiao2024efficientstreaminglanguagemodels">(<a href="#ref-xiao2024efficientstreaminglanguagemodels" role="doc-biblioref">Xiao et al. 2024</a>)</span>, but that can also be precomputed, since we always know what token it would be: it’s a sequence start token.</p>
-<p>You might find it a bit similar to what’s happening in [Quiet-STaR]<span class="citation" data-cites="zelikman2024quietstarlanguagemodelsteach">(<a href="#ref-zelikman2024quietstarlanguagemodelsteach" role="doc-biblioref">Zelikman et al. 2024</a>)</span> paper, where they also precompute KV values for different chunks of text, but it’s done with motivation of running inference of different tokens in parallel. Here, however, motivation is precomputation of KV values to save time during inference. In example above, in order to get 4, we only need to compute KV values for single token, which will be just 4. Rest is just loaded. 1 vs (25*25)/2, isn’t it neat?</p>
+<p>Notice how last token, attributed to system prompt, has attention to entire context. This is required to properly predict next token. All following generated tokens will attend to everything in the context, but note how system prompt, and chunks, all can have precomputed KV values since they don’t attend to each other. With little exception of token at index 0, which is also called “attention sink”<span class="citation" data-cites="xiao2024efficientstreaminglanguagemodels">(<a href="#ref-xiao2024efficientstreaminglanguagemodels" role="doc-biblioref">Xiao et al. 2024</a>)</span>, but that can also be precomputed, since we always know what token it would be: it’s a sequence start token. User prompt only uses cheap “triangular” mask, but you can go as far as you want with this, we’ve saved enough here.</p>
+<p>You might find it a bit similar to what’s happening in Quiet-STaR<span class="citation" data-cites="zelikman2024quietstarlanguagemodelsteach">(<a href="#ref-zelikman2024quietstarlanguagemodelsteach" role="doc-biblioref">Zelikman et al. 2024</a>)</span> paper, where they also precompute KV values for different chunks of text, but it’s done with motivation of running inference of different tokens in parallel. Here, however, motivation is precomputation of KV values to save time during inference. In example above, in order to get 4, we only need to compute KV values for single token, which will be just 4. Rest is just loaded. 25 vs (25*25)/2, isn’t it neat?</p>
 <p>For now, this is just an idea, there’s no implementation YET. Will have to do it a bit later once I finish with other stuff.</p>
 <section id="cite-this-as" class="level3">
 <h3 class="anchored" data-anchor-id="cite-this-as">Cite this as</h3>
