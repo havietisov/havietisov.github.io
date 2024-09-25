@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/q-compression/index.html",
       "/posts/context-stitching/index.html",
       "/posts/slippery-attention/index.html"
     ]
