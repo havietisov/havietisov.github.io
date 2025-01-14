@@ -57,7 +57,27 @@ div.sourceCode
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-</style>
+/* CSS for citations */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+  margin-bottom: 0em;
+}
+.hanging-indent div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}</style>
 
 
 <script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
@@ -204,7 +224,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="implementation-experiments-and-caveats" class="level2">
 <h2 class="anchored" data-anchor-id="implementation-experiments-and-caveats">Implementation, experiments and caveats</h2>
 <p>Turns out, this idea has some merit, and results are promising.</p>
-<p>So, first of all: in order to bring some notable improvements, we need to expand the bitmask to cover more values, single bit ain’t gonna cut it. Experiment on Sheared LLama<span class="citation" data-cites="xia2024shearedllamaacceleratinglanguage">(<a href="#ref-xia2024shearedllamaacceleratinglanguage" role="doc-biblioref"><strong>xia2024shearedllamaacceleratinglanguage?</strong></a>)</span>, quantized to 4 bits with round-to-nearest method (64 and 128 group-size) shows that, on average, distribution of quantized weights is such that we can represent only 10% of all weights, while we should keep 90% of them in the stack + bitmasks.</p>
+<p>So, first of all: in order to bring some notable improvements, we need to expand the bitmask to cover more values, single bit ain’t gonna cut it. Experiment on Sheared LLama<span class="citation" data-cites="xia2024shearedllamaacceleratinglanguage">(<a href="#ref-xia2024shearedllamaacceleratinglanguage" role="doc-biblioref">Xia et al. 2024</a>)</span>, quantized to 4 bits with round-to-nearest method (64 and 128 group-size) shows that, on average, distribution of quantized weights is such that we can represent only 10% of all weights, while we should keep 90% of them in the stack + bitmasks.</p>
 <p>So, I expand the mask to contain 2 bits now, which translates to 3 values for 3 most common weights and with 0 indicating that we need to pop weight from the stack. Compression ratio is now around 25% (for Sheared LLaMa, again) and this gets interesting.</p>
 <p>Mind you, this all is just lossless compression, and now we can get further: introduce lossy compression!</p>
 <p>For lossy compression, I decided to squish 6 values from 3-bit range into 3 values from our 2-bit masked representation, in a following way (for a range of quantized weight values from -7 to +7):</p>
@@ -248,10 +268,15 @@ Figure&nbsp;1: Example weight distribution
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
+
 </section>
 </section>
 
-</main> <!-- /main -->
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" role="doc-bibliography" id="quarto-bibliography"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent" data-entry-spacing="0" role="list">
+<div id="ref-xia2024shearedllamaacceleratinglanguage" class="csl-entry" role="listitem">
+Xia, Mengzhou, Tianyu Gao, Zhiyuan Zeng, and Danqi Chen. 2024. <span>“Sheared LLaMA: Accelerating Language Model Pre-Training via Structured Pruning.”</span> <a href="https://arxiv.org/abs/2310.06694">https://arxiv.org/abs/2310.06694</a>.
+</div>
+</div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
   const toggleBodyColorMode = (bsSheetEl) => {

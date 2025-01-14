@@ -7,10 +7,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Hlib Avietisov">
-<meta name="dcterms.date" content="2024-09-16">
-<meta name="description" content="A sub-quadratic attention trick to enchance even pre-trained LLMs with speed and incredible abilities">
+<meta name="dcterms.date" content="2025-01-14">
+<meta name="description" content="Just sharing this ingenious way to create sets of block pointers.">
 
-<title>You don’t need to pay that much attention – Hlib Avietisov blog on machine learning</title>
+<title>Block-strided coalesced memory access pattern in triton – Hlib Avietisov blog on machine learning</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -80,7 +80,7 @@ div.csl-indent {
 }</style>
 
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -123,12 +123,6 @@ div.csl-indent {
     "search-label": "Search"
   }
 }</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
-
-
-
-<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
-
 
 
 <link rel="stylesheet" href="../../styles.css">
@@ -176,18 +170,14 @@ div.csl-indent {
 <header id="title-block-header" class="quarto-title-block default page-columns page-full">
   <div class="quarto-title-banner page-columns page-full">
     <div class="quarto-title column-body">
-      <h1 class="title">You don’t need to pay that much attention</h1>
+      <h1 class="title">Block-strided coalesced memory access pattern in triton</h1>
                   <div>
         <div class="description">
-          A sub-quadratic attention trick to enchance even pre-trained LLMs with speed and incredible abilities
+          Just sharing this ingenious way to create sets of block pointers.
         </div>
       </div>
                           <div class="quarto-categories">
-                <div class="quarto-category">machine-learning</div>
-                <div class="quarto-category">transformers</div>
-                <div class="quarto-category">attention</div>
-                <div class="quarto-category">code</div>
-                <div class="quarto-category">optimization</div>
+                <div class="quarto-category">triton</div>
               </div>
                   </div>
   </div>
@@ -205,7 +195,7 @@ div.csl-indent {
       <div>
       <div class="quarto-title-meta-heading">Published</div>
       <div class="quarto-title-meta-contents">
-        <p class="date">September 16, 2024</p>
+        <p class="date">January 14, 2025</p>
       </div>
     </div>
     
@@ -224,253 +214,95 @@ div.csl-indent {
 
 
 
-<section id="slippery-attention" class="level2">
-<h2 class="anchored" data-anchor-id="slippery-attention">Slippery attention</h2>
-<p>Main idea behind this lies behind one question: Why do we need to calculate attention scores for stuff that we already know?</p>
-<p>To get what I mean, look at causal attention mask (or at least, how it looks like in Sheared LLaMA <span class="citation" data-cites="xia2024shearedllamaacceleratinglanguage">(<a href="#ref-xia2024shearedllamaacceleratinglanguage" role="doc-biblioref">Xia et al. 2024</a>)</span>):</p>
-<div id="cell-fig-causal" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-display">
-<div id="fig-causal" class="quarto-float quarto-figure quarto-figure-center anchored">
-<figure class="quarto-float quarto-float-fig figure">
-<div aria-describedby="fig-causal-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="index_files/figure-html/fig-causal-output-1.png" width="407" height="411" class="figure-img">
-</div>
-<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-causal-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;1: Causal Attention Mask
-</figcaption>
-</figure>
-</div>
-</div>
-</div>
-<p>Every token can attend to every other token in the sequence. Pretty normal, right? After calculating attention scores, what is going on is that from this token model predicts the next token in the sequence, that is actually already known.</p>
-<p>Let’s consider the following sentence: “Six is afraid of seven” Let’s assume that our words are our tokens. Then, we have following sequence of tokens:</p>
-<pre><code>&lt;s&gt;
-six
-is
-afraid
-of
-seven
-</code></pre>
-<p>For some reason we predict that “is” comes after “six”, but we already know that “is” is the third token in the sequence. That’s the idea:</p>
-<blockquote class="blockquote">
-<p><strong><em>We don’t need to calculate attention scores for stuff that we already know, so we only need to calculate attention scores when we predict token that comes after the token last known</em></strong></p>
-</blockquote>
-<p>In this way, we skip the calculation of many attention scores. So, for a sequence with a length of 10, the attention mask should look like this:</p>
-<div id="cell-fig-incomplete" class="cell" data-execution_count="2">
-<div class="cell-output cell-output-display">
-<div id="fig-incomplete" class="quarto-float quarto-figure quarto-figure-center anchored">
-<figure class="quarto-float quarto-float-fig figure">
-<div aria-describedby="fig-incomplete-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="index_files/figure-html/fig-incomplete-output-1.png" width="407" height="411" class="figure-img">
-</div>
-<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-incomplete-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;2: Incomplete Attention Mask
-</figcaption>
-</figure>
-</div>
-</div>
-</div>
-<p>Looks weird and looks like it shouldn’t work, and you’re right, it doesn’t work when made exactly like this.</p>
+<p>So, I was just practicing triton and decided to try to create such offsets so I’m able to access blocks of memory in a single operation, contrary to straightforward looping with multiple load/store operations, and what often is generated by LLMs (for now). This I also came up with the help of Claude, but after some time of deliberation. Something like this can also be found in <span class="citation" data-cites="triton_matmul_tutorial">(<a href="#ref-triton_matmul_tutorial" role="doc-biblioref">Triton 2024</a>)</span> from Philippe Tillet on triton-lang.org, but just everything is jammed up there, so it’s harder to dissect. Meanwhile, I’m sharing simplest kernel possible, that just does block fill.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="at">@triton.jit</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _blocky_fill_kernel_2(output_matrix, block_dim_x:tl.constexpr, block_dim_y:tl.constexpr, stride:tl.constexpr, <span class="bu">len</span>:tl.constexpr):</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    pid <span class="op">=</span> tl.program_id(<span class="dv">0</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    block_y_pos <span class="op">=</span> (pid <span class="op">*</span> block_dim_x) <span class="op">//</span> stride</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    block_x_pos <span class="op">=</span> pid <span class="op">%</span> (stride <span class="op">//</span> block_dim_x)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> block_x_pos <span class="op">*</span> block_dim_x <span class="op">+</span> block_y_pos <span class="op">*</span> stride <span class="op">*</span> block_dim_y <span class="op">+</span> tl.arange(<span class="dv">0</span>, block_dim_x)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create offsets for the entire block at once</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    block_base <span class="op">=</span> block_x_pos <span class="op">*</span> block_dim_x <span class="op">+</span> block_y_pos <span class="op">*</span> stride <span class="op">*</span> block_dim_y</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create row offsets (0, 1, 2, 3, 0, 1, 2, 3, ...) for each element in block</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    col_idx <span class="op">=</span> tl.arange(<span class="dv">0</span>, block_dim_x <span class="op">*</span> block_dim_y) <span class="op">%</span> block_dim_x</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Create row numbers (0, 0, 0, 0, 1, 1, 1, 1, ...) for each element</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    row_idx <span class="op">=</span> tl.arange(<span class="dv">0</span>, block_dim_x <span class="op">*</span> block_dim_y) <span class="op">//</span> block_dim_x</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Combine into final offsets</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    offsets <span class="op">=</span> block_base <span class="op">+</span> row_idx <span class="op">*</span> stride <span class="op">+</span> col_idx</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    mask <span class="op">=</span> offsets <span class="op">&lt;</span> <span class="bu">len</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="co">#if pid == 0:  # Debug</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    tl.store(output_matrix <span class="op">+</span> offsets, pid <span class="op">+</span> <span class="dv">1</span>, mask<span class="op">=</span>mask)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>it works in this way: <code>col_idx</code> is a matrix of column indices for each cell in the block, and for 16x16 matrix with 4x4 block size will look like this, if we isolate block offsets only for pid==0:</p>
+<pre><code>tensor([[0., 1., 2., 3., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 1., 2., 3., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 1., 2., 3., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 1., 2., 3., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]],
+       device='cuda:0')</code></pre>
+<pre><code>`row_idx` is a matrix of row indices for each cell in the block, and for 16x16 matrix with 4x4 block size will look like this, if we isolate block offsets only for pid==0:</code></pre>
+<pre><code>tensor([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [1., 1., 1., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [2., 2., 2., 2., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [3., 3., 3., 3., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+        [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]],
+       device='cuda:0')</code></pre>
+<p>So, after this, we can calculate their offsets:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a> <span class="co"># Combine into final offsets</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>offsets <span class="op">=</span> block_base <span class="op">+</span> row_idx <span class="op">*</span> stride <span class="op">+</span> col_idx</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Which for our block with pid == 0 of 4x4 for 16x16 offset matrix will look like this:</p>
+<pre><code>tensor([[ 0.,  1.,  2.,  3.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [16., 17., 18., 19.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [32., 33., 34., 35.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [48., 49., 50., 51.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.],
+        [ 0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 0.,  0.]], 
+    device='cuda:0')</code></pre>
+<p>Really convenient, no loops, single load/store operation.</p>
 <p>…</p>
-<p>There’s a catch, though. It’s possible to make something like this work. First of all, there come attention sinks<span class="citation" data-cites="xiao2024efficientstreaminglanguagemodels">(<a href="#ref-xiao2024efficientstreaminglanguagemodels" role="doc-biblioref">Xiao et al. 2024</a>)</span>. It’s special tokens (special because they emerge like that, not because they are designated to be special), that have greater impact on attention scores, and which are located at the very beginning of the sentence. We can add that:</p>
-<div id="cell-fig-sink" class="cell" data-execution_count="3">
-<div class="cell-output cell-output-display">
-<div id="fig-sink" class="quarto-float quarto-figure quarto-figure-center anchored">
-<figure class="quarto-float quarto-float-fig figure">
-<div aria-describedby="fig-sink-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="index_files/figure-html/fig-sink-output-1.png" width="407" height="411" class="figure-img">
-</div>
-<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-sink-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;3: Incomplete attention with attention sinks
-</figcaption>
-</figure>
-</div>
-</div>
-</div>
-<p>This one works better, but still not as good as I would like it to be. Adding something similar to sliding window attention does the trick and improves it by a very good margin:</p>
-<div id="cell-fig-window" class="cell" data-execution_count="4">
-<div class="cell-output cell-output-display">
-<div id="fig-window" class="quarto-float quarto-figure quarto-figure-center anchored">
-<figure class="quarto-float quarto-float-fig figure">
-<div aria-describedby="fig-window-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="index_files/figure-html/fig-window-output-1.png" width="407" height="411" class="figure-img">
-</div>
-<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-window-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;4: Slippery Attention
-</figcaption>
-</figure>
-</div>
-</div>
-</div>
-<p>Token at the very top is the one that we now make the predicton for: what comes after that. So for them, attention score is being calculated as usual. For others: just an attention sink, and token before current one.</p>
-<p>Results of this intervention are rather interesting: First of all, for example prompts that I use to evaluate how models are ruined by my interventions, not much changed. First example is “why did the chicken cross the road?” – outputs didn’t change at all. When I prompted it to write me “hello world” in C++, it still gave me results that we will consider correct, just in a different way.</p>
-<p>Here’s normal output:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode cpp code-with-copy"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;iostream&gt;</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main<span class="op">()</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">std::</span>cout <span class="op">&lt;&lt;</span> <span class="st">"Hello world"</span><span class="op">;</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>A<span class="op">:</span> You can use <span class="bu">std::</span>cout to print the string<span class="op">.</span></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;iostream&gt;</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Here’s output with my intervention:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode cpp code-with-copy"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>Hello world in C<span class="op">++</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main<span class="op">()</span> <span class="op">{</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>cout <span class="op">&lt;&lt;</span> <span class="st">"Hello world in C++"</span> <span class="op">&lt;&lt;</span> endl<span class="op">;</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>A<span class="op">:</span> You can use <span class="bu">std::</span>cout to print the message<span class="op">.</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> main<span class="op">()</span> <span class="op">{</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Not that big of a difference, isn’t it?</p>
-<p>Main difference seems to lie in class of tasks that require some kind of arithmetic, like directly asking to do sums or multiplications. These changed significantly:</p>
-<p>Original output:</p>
-<pre><code>User request: 10 * 2 equals what?
-Answer : 10 * 2 = 20
-User request: 10 * 2 equals what?
-Answer : 10 * 2 = 200
-User request: 10 * </code></pre>
-<p>output with my intervention:</p>
-<pre><code>User request: 10 * 2 equals what?
-Answer : 10 * 2 = 20
-
-A: You can use modulo operator:
-&gt;&gt;&gt; 10 / 2 == 2
-
-
-A: You can use modulo operator:</code></pre>
-<p>With other prompts, modified model’s outputs are sometimes just stuff that has nothing to do with the request, which is not the case with the original model.</p>
-<div id="cell-fig-table" class="cell" data-execution_count="5">
-<div id="fig-table" class="cell-output cell-output-display quarto-float quarto-figure quarto-figure-center anchored" data-execution_count="5">
-<figure class="quarto-float quarto-float-fig figure">
-<div aria-describedby="fig-table-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<div>
-
-
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">Task</th>
-<th data-quarto-table-cell-role="th">Metric</th>
-<th data-quarto-table-cell-role="th">Slippery Attention</th>
-<th data-quarto-table-cell-role="th">Vanilla</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">0</td>
-<td>lambada_standard</td>
-<td>perplexity,none</td>
-<td>9889.734978</td>
-<td>9.064670</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">1</td>
-<td>lambada_standard</td>
-<td>perplexity_stderr,none</td>
-<td>509.896498</td>
-<td>0.244574</td>
-</tr>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">2</td>
-<td>lambada_standard</td>
-<td>acc,none</td>
-<td>0.023481</td>
-<td>0.521832</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">3</td>
-<td>lambada_standard</td>
-<td>acc_stderr,none</td>
-<td>0.002110</td>
-<td>0.006959</td>
-</tr>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">4</td>
-<td>xstorycloze_en</td>
-<td>acc,none</td>
-<td>0.518862</td>
-<td>0.691595</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">5</td>
-<td>xstorycloze_en</td>
-<td>acc_stderr,none</td>
-<td>0.012858</td>
-<td>0.011885</td>
-</tr>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">6</td>
-<td>logiqa</td>
-<td>acc,none</td>
-<td>0.230415</td>
-<td>0.216590</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">7</td>
-<td>logiqa</td>
-<td>acc_stderr,none</td>
-<td>0.016517</td>
-<td>0.016157</td>
-</tr>
-<tr class="odd">
-<td data-quarto-table-cell-role="th">8</td>
-<td>logiqa</td>
-<td>acc_norm,none</td>
-<td>0.274962</td>
-<td>0.273425</td>
-</tr>
-<tr class="even">
-<td data-quarto-table-cell-role="th">9</td>
-<td>logiqa</td>
-<td>acc_norm_stderr,none</td>
-<td>0.017513</td>
-<td>0.017482</td>
-</tr>
-</tbody>
-</table>
-
-</div>
-</div>
-<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-table-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;5: Benchmark results for Sheared Llama with Slippery Attention
-</figcaption>
-</figure>
-</div>
-</div>
-<p>As we can see, results are mixed. The one that is the most confusing is anything that calculates perplexity. Since every already known token calculates it’s attention score is calculated mostly in isolation from other tokens, we get poor perplexity scores. Other metrics are weird too. In some cases, we even got improvements (like for xstoryclose_en, logiqa). On others, like lambada, our scores dipped rather deep. Basically, we can only properly benchmark this intervention on tasks that require us to generate tokens, instead of just calculating perplexity (it will ALWAYS be poor because of how this thing works).</p>
-<p>Good thing is that model didn’t degrade beyond recognition even by slippery attention of triangular shape, and we’re not limited to this triangle-shape attention mask, by the way, it’s just a way to show that we can have some kind of sparsity in our attention pattern for prefill, and full attention for tokens that are generated. Something similar to this can be found in SampleAttention<span class="citation" data-cites="zhu2024sampleattentionnearlosslessaccelerationlong">(<a href="#ref-zhu2024sampleattentionnearlosslessaccelerationlong" role="doc-biblioref">Zhu et al. 2024</a>)</span>, but I didn’t have time yet to properly take a look at it. Main difference slippery attention has from other sparsity patterns is that shape of the pattern changes depending on what tokens are: inputs known beforehand or if they’re tokens generated as a model response.</p>
-<p>In it’s simpliest form, this intervention is implemented as another module that wraps the original self attention block, and only use the slippery attention when input sequence is longer than one. Code will be added to this blogpost once I clean it up.</p>
-<p>This “structured sparsity”/“slippery attention” gives us way more leeway in attention mask design (and makes entire thing sub-quadratic!), with which, new possibilities open up, which I will discuss in one of the next posts.</p>
-<section id="cite-this-as" class="level3">
-<h3 class="anchored" data-anchor-id="cite-this-as">Cite this as</h3>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bibtex code-with-copy"><code class="sourceCode bibtex"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="va">@misc</span>{<span class="ot">avietisov2024dont</span>,</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">title</span>={You don't need to pay that much attention},</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">author</span>={Hlib Avietisov},</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">year</span>={2024},</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">howpublished</span>={Online, available at <span class="ch">\url</span>{https://havietisov.github.io/posts/slippery-attention/}},</span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Or you could just use <a href="https://triton-lang.org/main/python-api/generated/triton.language.make_block_ptr.html#triton.language.make_block_ptr">tl.make_block_ptr</a> :)</p>
 
 
 
-</section>
-</section>
 
 <div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" role="doc-bibliography" id="quarto-bibliography"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent" data-entry-spacing="0" role="list">
-<div id="ref-xia2024shearedllamaacceleratinglanguage" class="csl-entry" role="listitem">
-Xia, Mengzhou, Tianyu Gao, Zhiyuan Zeng, and Danqi Chen. 2024. <span>“Sheared LLaMA: Accelerating Language Model Pre-Training via Structured Pruning.”</span> <a href="https://arxiv.org/abs/2310.06694">https://arxiv.org/abs/2310.06694</a>.
-</div>
-<div id="ref-xiao2024efficientstreaminglanguagemodels" class="csl-entry" role="listitem">
-Xiao, Guangxuan, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. 2024. <span>“Efficient Streaming Language Models with Attention Sinks.”</span> <a href="https://arxiv.org/abs/2309.17453">https://arxiv.org/abs/2309.17453</a>.
-</div>
-<div id="ref-zhu2024sampleattentionnearlosslessaccelerationlong" class="csl-entry" role="listitem">
-Zhu, Qianchao, Jiangfei Duan, Chang Chen, Siran Liu, Xiuhong Li, Guanyu Feng, Xin Lv, et al. 2024. <span>“SampleAttention: Near-Lossless Acceleration of Long Context LLM Inference with Adaptive Structured Sparse Attention.”</span> <a href="https://arxiv.org/abs/2406.15486">https://arxiv.org/abs/2406.15486</a>.
+<div id="ref-triton_matmul_tutorial" class="csl-entry" role="listitem">
+Triton. 2024. <span>“Matrix Multiplication Tutorial.”</span> <a href="https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html" class="uri">https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html</a>.
 </div>
 </div></section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
