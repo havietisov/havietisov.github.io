@@ -2,6 +2,8 @@
   {
     "listing": "/index.html",
     "items": [
+      "/posts/pipeline_distillation/autoencoder_distill_01.html",
+      "/posts/pipeline_distillation/index.html",
       "/posts/block_strided_coalesced_access_pattern/index.html",
       "/posts/q-compression/index.html",
       "/posts/context-stitching/index.html",

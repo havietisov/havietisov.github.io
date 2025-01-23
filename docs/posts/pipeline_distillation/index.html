@@ -6,8 +6,11 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Hlib Avietisov">
+<meta name="dcterms.date" content="2025-01-23">
+<meta name="description" content="Discover how to efficiently compress neural networks by teaching them layer-by-layer, just like building with LEGO blocks.">
 
-<title>Adventures in Inference Time Optimizations (and cool stuff) – Hlib Avietisov blog on machine learning</title>
+<title>Pipeline Distillation: Teaching Neural Networks One Layer at a Time – Hlib Avietisov blog on machine learning</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -23,24 +26,22 @@ ul.task-list li input[type="checkbox"] {
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<script src="site_libs/quarto-listing/list.min.js"></script>
-<script src="site_libs/quarto-listing/quarto-listing.js"></script>
-<script src="site_libs/quarto-html/quarto.js"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -68,77 +69,19 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
-<script>
 
-  window.document.addEventListener("DOMContentLoaded", function (_event) {
-    const listingTargetEl = window.document.querySelector('#listing-listing .list');
-    if (!listingTargetEl) {
-      // No listing discovered, do not attach.
-      return; 
-    }
 
-    const options = {
-      valueNames: ['listing-date','listing-title','listing-author','listing-image','listing-description','listing-categories',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
-      
-      searchColumns: ["listing-date","listing-title","listing-author","listing-image","listing-description","listing-categories"],
-    };
-
-    window['quarto-listings'] = window['quarto-listings'] || {};
-    window['quarto-listings']['listing-listing'] = new List('listing-listing', options);
-
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  });
-
-  window.addEventListener('hashchange',() => {
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  })
-  </script>
-
-  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
-
-<script type="text/javascript">
-const typesetMath = (el) => {
-  if (window.MathJax) {
-    // MathJax Typeset
-    window.MathJax.typeset([el]);
-  } else if (window.katex) {
-    // KaTeX Render
-    var mathElements = el.getElementsByClassName("math");
-    var macros = [];
-    for (var i = 0; i < mathElements.length; i++) {
-      var texText = mathElements[i].firstChild;
-      if (mathElements[i].tagName == "SPAN") {
-        window.katex.render(texText.data, mathElements[i], {
-          displayMode: mathElements[i].classList.contains('display'),
-          throwOnError: false,
-          macros: macros,
-          fleqn: false
-        });
-      }
-    }
-  }
-}
-window.Quarto = {
-  typesetMath
-};
-</script>
-
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="../../styles.css">
 </head>
 
-<body class="nav-fixed">
+<body class="nav-fixed fullcontent">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top quarto-banner">
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="./index.html">
+    <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Hlib Avietisov blog on machine learning</span>
     </a>
   </div>
@@ -149,7 +92,7 @@ window.Quarto = {
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="./about.html"> 
+    <a class="nav-link" href="../../about.html"> 
 <span class="menu-text">About</span></a>
   </li>  
   <li class="nav-item compact">
@@ -172,279 +115,131 @@ window.Quarto = {
 <!-- content -->
 <header id="title-block-header" class="quarto-title-block default page-columns page-full">
   <div class="quarto-title-banner page-columns page-full">
-    <div class="quarto-title column-page-left">
-      <h1 class="title">Adventures in Inference Time Optimizations (and cool stuff)</h1>
-                      </div>
+    <div class="quarto-title column-body">
+      <h1 class="title">Pipeline Distillation: Teaching Neural Networks One Layer at a Time</h1>
+                  <div>
+        <div class="description">
+          Discover how to efficiently compress neural networks by teaching them layer-by-layer, just like building with LEGO blocks.
+        </div>
+      </div>
+                          <div class="quarto-categories">
+                <div class="quarto-category">machine-learning</div>
+                <div class="quarto-category">distillation</div>
+              </div>
+                  </div>
   </div>
     
   
-  <div class="quarto-title-meta column-page-left">
+  <div class="quarto-title-meta">
 
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p>Hlib Avietisov </p>
+            </div>
+    </div>
       
+      <div>
+      <div class="quarto-title-meta-heading">Published</div>
+      <div class="quarto-title-meta-contents">
+        <p class="date">January 23, 2025</p>
+      </div>
+    </div>
     
       
     </div>
     
   
-  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        
-    <h5 class="quarto-listing-category-title">Categories</h5><div class="quarto-listing-category category-default"><div class="category" data-category="">All <span class="quarto-category-count">(6)</span></div><div class="category" data-category="attention">attention <span class="quarto-category-count">(2)</span></div><div class="category" data-category="code">code <span class="quarto-category-count">(1)</span></div><div class="category" data-category="distillation">distillation <span class="quarto-category-count">(2)</span></div><div class="category" data-category="machine-learning">machine-learning <span class="quarto-category-count">(4)</span></div><div class="category" data-category="optimization">optimization <span class="quarto-category-count">(3)</span></div><div class="category" data-category="quantization">quantization <span class="quarto-category-count">(1)</span></div><div class="category" data-category="transformers">transformers <span class="quarto-category-count">(3)</span></div><div class="category" data-category="triton">triton <span class="quarto-category-count">(1)</span></div></div></div>
+    
 <!-- main -->
-<main class="content quarto-banner-title-block column-page-left" id="quarto-document-content">
+<main class="content quarto-banner-title-block" id="quarto-document-content">
 
 
 
 
 
+<section id="idea" class="level2">
+<h2 class="anchored" data-anchor-id="idea">Idea</h2>
+<p>The core idea is that we can replace the process of end-to-end distillation, where the student takes the same inputs as the teacher and is expected to give the same outputs as the teacher, with distillation of the pipeline, where the student is expected to receive the same intermediate state as a piece of the teacher, and spit out the same intermediate state as the corresponding piece of the teacher. This is called pipeline distillation because we’re distilling individual pieces of the pipeline instead of the whole model.</p>
+</section>
+<section id="pipeline-distillation-in-practice" class="level2">
+<h2 class="anchored" data-anchor-id="pipeline-distillation-in-practice">Pipeline Distillation in Practice</h2>
+<p>Let’s implement this for a toy problem, simplest thing imagineable : an autoencoder with one-hot encoded classes, 10 ofthem. Then, we implement the pipeline distillation in a following way:</p>
+<p>We take a set of initial inputs for the first layer, these are just instances of one-hot encoded classes. We push them through the first layer of the teacher, record hidden states. Then, these hidden states become inputs for the next step of the pipeline, and so on and so forth until we reach the last layer. Our training objective is always MSE. For student, we repeat it: student must receive same inputs, and … we face a problem. Shapes are incompatible, if student is expected to be smaller!</p>
+<p>However, this is surprisingly easy to deal with : we just add a temporary reprojection layer, to make them compatible, then just throw it away, and new internal states of size of 128 become inputs for the next stage of the pipeline of the student! Once we know all of this, we can keep training the student, do backpropagation, etc. In the last layer there’s no need for reprojection, because shapes would be compatible, we will have same amount of classes!</p>
+<p>Let’s have our teacher to have hidden_dim equal to 512, and studen, 16. Then, shape transformations during training of the same stage of the pipeline are following: <code>[B, 10] -&gt; [B, 512] for teacher, [B,10] -&gt; [B, 16] -&gt; [B,512] for student</code></p>
+<p>Then, <code>[B,10] -&gt; [B,16]</code> become source of the internal states for the student. Keep doing this, until we hit the last layer, in which reprojection is not required.</p>
+<p>By the way, it’s irrelevang if we did teach teacher with dropout or not, student still can approximate the teacher. However, if we teach student with dropout, we will fail to distill the model. At least I didn’t manage to get it working for now, maybe later…? And obviously we want student to overfit on hidden state representations, the lower the loss the better student will work. There’s a whole notebook with example implementation <a href="../../posts/pipeline_distillation/autoencoder_distill_01.html">here</a>.</p>
+<p>Claude made me a nice visualization of the whole proces here:</p>
+<pre><code>Teacher Model (512-dim)                Student Model (32-dim)
++------------------+                   +------------------+
+|    Input (10d)   |                  |    Input (10d)   |
++--------|---------+                  +--------|---------+
+         |                                     |
+         v                                     v
++------------------+                  +------------------+
+|  Encoder1 (512d) |   Projection1   |  Encoder1 (32d)  |
+|    [captured]----|&lt;--[512d layer]--|    [training]    |
++--------|---------+                  +--------|---------+
+         |                                     |
+         v                                     v
++------------------+                  +------------------+
+|  Encoder2 (512d) |   Projection2   |  Encoder2 (32d)  |
+|    [captured]----|&lt;--[512d layer]--|    [training]    |
++--------|---------+                  +--------|---------+
+         |                                     |
+         v                                     v
++------------------+                  +------------------+
+|  Decoder1 (512d) |   Projection3   |  Decoder1 (32d)  |
+|    [captured]----|&lt;--[512d layer]--|    [training]    |
++--------|---------+                  +--------|---------+
+         |                                     |
+         v                                     v
++------------------+                  +------------------+
+|  Decoder2 (10d)  |      Match      |  Decoder2 (10d)  |
+|    [captured]----|&lt;--------------- |    [training]    |
++--------|---------+                  +--------|---------+
+         |                                     |
+         v                                     v
+    Final Output                          Final Output
+     (teacher)                             (student)
+
+Legend:
+[captured]  : Frozen teacher states
+[training]  : Actively trained student layers
+[512d layer]: Temporary upward projection layer
+&lt;-----------: Direction of knowledge flow
+
+Key Points:
+* Each projection layer temporarily upscales 32d→512d
+* Projections are trained alongside student model
+* Projections are discarded after training
+* Final 10d output doesn't need projection</code></pre>
+<p>In one of the last cells of the notebook there is a good examples of outputs of such autoencoders:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="comparison.png" class="img-fluid figure-img"></p>
+<figcaption>Comparison of teacher and student outputs</figcaption>
+</figure>
+</div>
+<p>We see that they’re entirely identical, although it is confusing why the hell does this even work when we just kept removing pipeline stages during training (remember, reprojection layer is temporary!)</p>
+</section>
+<section id="so-why-the-hell-does-this-work" class="level2">
+<h2 class="anchored" data-anchor-id="so-why-the-hell-does-this-work">So, why the hell does this work?</h2>
+<p>Well, my guess would be “something-something manifold hypothesis something-something”. If solution can actually be approximated in a smaller space, then it can as well be squeezed from bigger state like this.</p>
+</section>
+<section id="why" class="level2">
+<h2 class="anchored" data-anchor-id="why">Why?</h2>
+<p>Now you don’t need to load the whole model in order to quickly distill something. At least this is the expectation. I need to do more tests of this, on MNIST, CIFAR, and transformers. Bonus points for being able to tell during training of the early stages of the pipeline whether or student size is sufficient. For instance, when I trained my autoencoders, I could go as low as to just 3 for the intermediate state size of the student! And I could tell how low can I go during training of the first two stages! Distilling transformers like this would be especially interesting, as the pipeline is much more complex than whatever we’ve had here, as well as trying to distill them with shortened pipelines.</p>
+<p>Not even talking about such possibilities as carving out stuff that we’re interested in, like certain sub-sets of the dictionary, or modified behaviours by introductin SAEs into teacher pipeline during distillation! There’s so much to test, so more is coming.</p>
 
 
+</section>
 
-
-<div class="quarto-listing quarto-listing-container-default" id="listing-listing">
-<div class="list quarto-listing-default">
-<div class="quarto-post image-right" data-index="0" data-categories="machine-learning,distillation" data-listing-date-sort="1737583200000" data-listing-file-modified-sort="1737640636752" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="1" data-listing-word-count-sort="1">
-<div class="thumbnail">
-<p><a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external"></a></p><a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external">
-<p class="card-img-top"><img src="posts\pipeline_distillation\autoencoder_distill_01_files\figure-html\cell-4-output-2.png"  class="thumbnail-image card-img"/></p>
-</a><p><a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external">Pipeline Distillation Implementation</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('machine-learning'); return false;">
-machine-learning
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('distillation'); return false;">
-distillation
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im">import</span> torch</span>
-<span id="cb1-2"><span class="im">import</span> numpy <span class="im">as</span> np</span>
-<span id="cb1-3"><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span></code></pre></div>
-</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/pipeline_distillation/autoencoder_distill_01.html" class="no-external">
-<div class="listing-date">
-Jan 23, 2025
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="1" data-categories="machine-learning,distillation" data-listing-date-sort="1737583200000" data-listing-file-modified-sort="1737641622342" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1622">
-<div class="thumbnail">
-<p><a href="./posts/pipeline_distillation/index.html" class="no-external"></a></p><a href="./posts/pipeline_distillation/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/pipeline_distillation/Image.png" class="thumbnail-image"></p>
-</a><p><a href="./posts/pipeline_distillation/index.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/pipeline_distillation/index.html" class="no-external">Pipeline Distillation: Teaching Neural Networks One Layer at a Time</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/pipeline_distillation/index.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('machine-learning'); return false;">
-machine-learning
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('distillation'); return false;">
-distillation
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/pipeline_distillation/index.html" class="no-external">Discover how to efficiently compress neural networks by teaching them layer-by-layer, just like building with LEGO blocks.</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/pipeline_distillation/index.html" class="no-external">
-<div class="listing-date">
-Jan 23, 2025
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="2" data-categories="triton" data-listing-date-sort="1736805600000" data-listing-file-modified-sort="1736861525188" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="9" data-listing-word-count-sort="1752">
-<div class="thumbnail">
-<p><a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external"></a></p><a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/block_strided_coalesced_access_pattern/image.png" class="thumbnail-image"></p>
-</a><p><a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external">Block-strided coalesced memory access pattern in triton</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('triton'); return false;">
-triton
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external">Just sharing this ingenious way to create sets of block pointers. </a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/block_strided_coalesced_access_pattern/index.html" class="no-external">
-<div class="listing-date">
-Jan 14, 2025
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="3" data-categories="transformers,quantization,optimization" data-listing-date-sort="1727211600000" data-listing-file-modified-sort="1727293239961" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="4" data-listing-word-count-sort="691">
-<div class="thumbnail">
-<p><a href="./posts/q-compression/index.html" class="no-external"></a></p><a href="./posts/q-compression/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/q-compression/image.jpg" class="thumbnail-image"></p>
-</a><p><a href="./posts/q-compression/index.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/q-compression/index.html" class="no-external">Abusing distributional properties of 4-bit quantized weights for compression with variable length quantization</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/q-compression/index.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('transformers'); return false;">
-transformers
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('quantization'); return false;">
-quantization
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('optimization'); return false;">
-optimization
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/q-compression/index.html" class="no-external">Distributional properties of 4-bit quantizations allow for variable length encoding, with and without accuracy loss (depends on what you actually want)</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/q-compression/index.html" class="no-external">
-<div class="listing-date">
-Sep 25, 2024
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="4" data-categories="machine-learning,transformers,attention,optimization" data-listing-date-sort="1727125200000" data-listing-file-modified-sort="1727207483098" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="6" data-listing-word-count-sort="1151">
-<div class="thumbnail">
-<p><a href="./posts/context-stitching/index.html" class="no-external"></a></p><a href="./posts/context-stitching/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/context-stitching/image.jpg" class="thumbnail-image"></p>
-</a><p><a href="./posts/context-stitching/index.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/context-stitching/index.html" class="no-external">Unnatural abilities of context stitching</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/context-stitching/index.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('machine-learning'); return false;">
-machine-learning
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('transformers'); return false;">
-transformers
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('attention'); return false;">
-attention
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('optimization'); return false;">
-optimization
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/context-stitching/index.html" class="no-external">As was described in the “You don’t need to pay that much attention” post, from slippery attention’s property to have different attention patterns for different classes of tokens, coming a rather powerful technique, which I called “Context stitching”, which allows to put context together from precomputed chunks like lego blocks. In this blog post, I elaborate how.</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/context-stitching/index.html" class="no-external">
-<div class="listing-date">
-Sep 24, 2024
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="5" data-categories="machine-learning,transformers,attention,code,optimization" data-listing-date-sort="1726434000000" data-listing-file-modified-sort="1726867450508" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="7" data-listing-word-count-sort="1374">
-<div class="thumbnail">
-<p><a href="./posts/slippery-attention/index.html" class="no-external"></a></p><a href="./posts/slippery-attention/index.html" class="no-external">
-<p><img loading="lazy" src="./posts/slippery-attention/image.jpg" class="thumbnail-image"></p>
-</a><p><a href="./posts/slippery-attention/index.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./posts/slippery-attention/index.html" class="no-external">You don’t need to pay that much attention</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./posts/slippery-attention/index.html" class="no-external"></a>
-</div>
-<div class="listing-categories">
-<div class="listing-category" onclick="window.quartoListingCategory('machine-learning'); return false;">
-machine-learning
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('transformers'); return false;">
-transformers
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('attention'); return false;">
-attention
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('code'); return false;">
-code
-</div>
-<div class="listing-category" onclick="window.quartoListingCategory('optimization'); return false;">
-optimization
-</div>
-</div>
-<div class="listing-description">
-<a href="./posts/slippery-attention/index.html" class="no-external">A sub-quadratic attention trick to enchance even pre-trained LLMs with speed and incredible abilities</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./posts/slippery-attention/index.html" class="no-external">
-<div class="listing-date">
-Sep 16, 2024
-</div>
-<div class="listing-author">
-Hlib Avietisov
-</div>
-</a>
-</div>
-</div>
-</div>
-<div class="listing-no-matching d-none">
-No matching items
-</div>
-</div></main> <!-- /main -->
+</main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
   const toggleBodyColorMode = (bsSheetEl) => {
