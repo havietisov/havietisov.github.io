@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://havietisov.github.io/index.html</loc>
+    <lastmod>2025-01-23T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/about.html</loc>
+    <lastmod>2024-09-16T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/posts/slippery-attention/index.html</loc>
+    <lastmod>2024-09-16T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/posts/context-stitching/index.html</loc>
+    <lastmod>2024-09-24T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/posts/q-compression/index.html</loc>
+    <lastmod>2024-09-25T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/posts/block_strided_coalesced_access_pattern/index.html</loc>
+    <lastmod>2025-01-14T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/posts/pipeline_distillation/index.html</loc>
+    <lastmod>2025-01-23T00:00:00Z</lastmod>
+  </url>
+  <url>
+    <loc>https://havietisov.github.io/posts/pipeline_distillation/autoencoder_distill_01.html</loc>
+    <lastmod>2025-01-23T00:00:00Z</lastmod>
+  </url>
+</urlset>
